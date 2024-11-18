@@ -258,15 +258,23 @@
         let currentFacingMode = 'environment';
         let stream = null;
 
-        function showError(message) {
+        // Debug information
+        console.log('Browser:', navigator.userAgent);
+        console.log('Checking camera API availability:');
+        console.log('mediaDevices:', !!navigator.mediaDevices);
+        console.log('getUserMedia:', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+
+        function showError(message, isWarning = false) {
             errorDiv.textContent = message;
             errorDiv.style.display = 'block';
-            console.error(message);
+            errorDiv.style.backgroundColor = isWarning ? '#fff3cd' : '#fee8e7';
+            console.log(`${isWarning ? 'Warning' : 'Error'}: ${message}`);
+            updateStatus(message);
         }
 
         function updateStatus(message) {
             statusDiv.textContent = message;
-            console.log(message);
+            console.log('Status:', message);
         }
 
         function updateCanvasSize() {
@@ -277,7 +285,6 @@
                 canvas.width = videoWidth;
                 canvas.height = videoHeight;
                 
-                // Calculate scale to maintain aspect ratio
                 const scale = Math.min(
                     video.clientWidth / videoWidth,
                     video.clientHeight / videoHeight
@@ -296,6 +303,37 @@
             video.srcObject = null;
         }
 
+        async function checkCameraSupport() {
+            updateStatus('Checking camera support...');
+            
+            if (!navigator.mediaDevices) {
+                showError('MediaDevices API not supported in this browser');
+                return false;
+            }
+
+            if (!navigator.mediaDevices.getUserMedia) {
+                showError('getUserMedia not supported in this browser');
+                return false;
+            }
+
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cameras = devices.filter(device => device.kind === 'videoinput');
+                
+                if (cameras.length === 0) {
+                    showError('No cameras found on this device');
+                    return false;
+                }
+
+                updateStatus(`Found ${cameras.length} camera(s)`);
+                cameras.forEach(camera => console.log('Camera:', camera.label || 'unnamed camera'));
+                return true;
+            } catch (error) {
+                showError(`Error checking cameras: ${error.message}`);
+                return false;
+            }
+        }
+
         loadModelBtn.addEventListener('click', async () => {
             try {
                 loadModelBtn.disabled = true;
@@ -311,29 +349,59 @@
 
         async function initCamera(constraints) {
             try {
+                updateStatus('Stopping any existing camera stream...');
                 await stopCamera();
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
+
+                updateStatus('Requesting camera access...');
+                console.log('Camera constraints:', constraints);
                 
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                updateStatus('Camera access granted');
+                
+                video.srcObject = stream;
+                video.style.display = 'block';
+
                 return new Promise((resolve, reject) => {
                     const timeoutId = setTimeout(() => {
                         reject(new Error('Camera initialization timed out'));
                     }, 10000);
 
+                    video.onerror = (error) => {
+                        clearTimeout(timeoutId);
+                        reject(new Error(`Video error: ${error.message || 'Unknown video error'}`));
+                    };
+
                     video.onloadedmetadata = async () => {
                         clearTimeout(timeoutId);
                         try {
+                            updateStatus('Video metadata loaded, starting playback...');
                             await video.play();
+                            updateStatus('Video playback started');
                             updateCanvasSize();
                             resolve();
                         } catch (error) {
-                            reject(error);
+                            reject(new Error(`Failed to start video: ${error.message}`));
                         }
                     };
                 });
             } catch (error) {
                 if (error.name === 'NotAllowedError') {
+                    showError('Camera access denied. Please allow camera access and try again.');
                     permissionPrompt.style.display = 'block';
+                } else if (error.name === 'NotReadableError') {
+                    showError('Camera is in use by another application or not available.');
+                } else if (error.name === 'OverconstrainedError') {
+                    showError('Trying with lower resolution...', true);
+                    return initCamera({
+                        video: {
+                            facingMode: currentFacingMode,
+                            width: { ideal: 320 },
+                            height: { ideal: 240 }
+                        },
+                        audio: false
+                    });
+                } else {
+                    showError(`Camera error: ${error.name} - ${error.message}`);
                 }
                 throw error;
             }
@@ -342,8 +410,13 @@
         startCameraBtn.addEventListener('click', async () => {
             try {
                 startCameraBtn.disabled = true;
-                updateStatus('Starting camera...');
                 errorDiv.style.display = 'none';
+                updateStatus('Starting camera initialization...');
+
+                if (!await checkCameraSupport()) {
+                    startCameraBtn.disabled = false;
+                    return;
+                }
 
                 const constraints = {
                     video: {
@@ -359,7 +432,6 @@
                 updateStatus('Camera ready!');
                 startDetectionBtn.disabled = false;
 
-                // Check for multiple cameras
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const cameras = devices.filter(device => device.kind === 'videoinput');
                 if (cameras.length > 1) {
@@ -367,7 +439,6 @@
                 }
 
             } catch (error) {
-                showError('Camera error: ' + error.message);
                 startCameraBtn.disabled = false;
             }
         });
@@ -408,34 +479,27 @@
                 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // Get the actual dimensions of the video display
                 const displayWidth = video.clientWidth;
                 const displayHeight = video.clientHeight;
                 
-                // Calculate scaling factors
                 const scaleX = canvas.width / video.videoWidth;
                 const scaleY = canvas.height / video.videoHeight;
 
                 predictions.forEach(prediction => {
-                    // Scale the bounding box coordinates
                     const x = prediction.bbox[0] * scaleX;
                     const y = prediction.bbox[1] * scaleY;
                     const width = prediction.bbox[2] * scaleX;
                     const height = prediction.bbox[3] * scaleY;
 
-                    // Draw bounding box
                     ctx.strokeStyle = '#00ff00';
                     ctx.lineWidth = 2;
                     ctx.strokeRect(x, y, width, height);
 
-                    // Draw label with confidence
                     const label = `${prediction.class} (${Math.round(prediction.score * 100)}%)`;
-                    ctx.fillStyle = '#00ff00';
                     ctx.font = '16px Arial';
                     
-                    // Add background to text for better visibility
                     const textMetrics = ctx.measureText(label);
-                    const textHeight = 16; // Approximate height of font
+                    const textHeight = 16;
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
                     ctx.fillRect(
                         x, 
@@ -444,7 +508,6 @@
                         textHeight
                     );
                     
-                    // Draw text
                     ctx.fillStyle = '#ffffff';
                     ctx.fillText(
                         label,
@@ -480,16 +543,14 @@
             });
         }
 
-        // Handle window resize and orientation changes
+        // Event listeners
         window.addEventListener('resize', updateCanvasSize);
         window.addEventListener('orientationchange', () => {
             setTimeout(updateCanvasSize, 100);
         });
 
-        // Clean up on page unload
         window.addEventListener('beforeunload', stopCamera);
 
-        // Handle visibility change
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 isDetecting = false;
@@ -498,12 +559,26 @@
             }
         });
 
-        // Handle iOS WebKit quirks
+        video.addEventListener('playing', () => {
+            updateStatus('Video is playing');
+        });
+
+        video.addEventListener('pause', () => {
+            updateStatus('Video paused');
+        });
+
+        video.addEventListener('suspend', () => {
+            updateStatus('Video suspended');
+        });
+
+        video.addEventListener('waiting', () => {
+            updateStatus('Video buffering...');
+        });
+
         if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
             video.setAttribute('playsinline', '');
             video.setAttribute('webkit-playsinline', '');
         }
     </script>
-    
 </body>
 </html>
