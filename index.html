@@ -3,8 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Real-time Object Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -13,37 +11,20 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            padding: 10px;
             background-color: #f0f2f5;
-            overscroll-behavior: none;
-        }
-
-        h1 {
-            color: #1a73e8;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 24px;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 1fr;
             gap: 20px;
-        }
-
-        .control-panel {
-            background-color: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
         }
 
         .video-container {
@@ -51,7 +32,8 @@
             background-color: #000;
             border-radius: 10px;
             overflow: hidden;
-            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+            width: 100%;
+            aspect-ratio: 4/3;
         }
 
         #video {
@@ -70,69 +52,54 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
-            pointer-events: none;
         }
 
-        .control-button {
-            padding: 12px 20px;
-            margin: 5px;
-            background-color: #1a73e8;
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background: #1a73e8;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background-color 0.3s ease;
-            -webkit-appearance: none;
+            flex: 1;
+            min-width: 120px;
         }
 
-        .control-button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-
-        .control-button:active {
-            background-color: #1557b0;
+        .btn:disabled {
+            background: #ccc;
         }
 
         #switchCamera {
             position: absolute;
             bottom: 20px;
             right: 20px;
-            padding: 10px 20px;
-            background-color: rgba(0, 0, 0, 0.6);
+            background: rgba(0,0,0,0.5);
             color: white;
             border: none;
+            padding: 10px;
             border-radius: 5px;
-            cursor: pointer;
-            z-index: 1000;
             display: none;
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
         }
 
         .status {
-            margin: 10px 0;
             padding: 10px;
-            background-color: #e3f2fd;
+            margin: 10px 0;
+            background: #e3f2fd;
             border-radius: 5px;
-            font-size: 14px;
         }
 
         .detection-list {
-            background-color: white;
-            padding: 20px;
+            background: white;
+            padding: 15px;
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            max-height: 400px;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .detection-list h2 {
-            margin-bottom: 15px;
-            color: #5f6368;
         }
 
         #detectedObjects {
@@ -142,89 +109,31 @@
         #detectedObjects li {
             padding: 10px;
             margin: 5px 0;
-            background-color: #f8f9fa;
+            background: #f8f9fa;
             border-radius: 5px;
             display: flex;
             justify-content: space-between;
-            font-size: 14px;
         }
 
-        .error-message {
-            background-color: #fee8e7;
-            color: #d93025;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            display: none;
-        }
-
-        .permission-prompt {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            z-index: 1001;
-            max-width: 80%;
-            text-align: center;
-        }
-
-        .permission-prompt button {
-            margin-top: 15px;
-        }
-
-        @media (max-width: 768px) {
-            body {
-                padding: 10px;
-            }
-
+        @media (min-width: 768px) {
             .container {
-                grid-template-columns: 1fr;
-            }
-
-            .control-button {
-                width: calc(50% - 10px);
-                margin: 5px;
-                padding: 10px;
-                font-size: 13px;
-            }
-
-            h1 {
-                font-size: 20px;
-                margin-bottom: 15px;
-            }
-
-            .status {
-                font-size: 13px;
-            }
-        }
-
-        @supports (-webkit-touch-callout: none) {
-            /* iOS-specific styles */
-            .video-container {
-                transform: translateZ(0);
+                grid-template-columns: 2fr 1fr;
             }
         }
     </style>
 </head>
 <body>
-    <h1>Real-time Object Detection</h1>
-    
-    <div class="control-panel">
-        <button id="loadModel" class="control-button">1. Load Model</button>
-        <button id="startCamera" class="control-button" disabled>2. Start Camera</button>
-        <button id="startDetection" class="control-button" disabled>3. Start Detection</button>
-        <div id="status" class="status">Click buttons above to start</div>
-        <div id="error" class="error-message"></div>
+    <div class="controls">
+        <button id="loadModel" class="btn">Load Model</button>
+        <button id="startCamera" class="btn" disabled>Start Camera</button>
+        <button id="startDetection" class="btn" disabled>Start Detection</button>
     </div>
+    
+    <div id="status" class="status">Click 'Load Model' to begin</div>
 
     <div class="container">
         <div class="video-container">
-            <video id="video" playsinline webkit-playsinline></video>
+            <video id="video" autoplay playsinline muted></video>
             <canvas id="canvas"></canvas>
             <button id="switchCamera">Switch Camera</button>
         </div>
@@ -233,11 +142,6 @@
             <ul id="detectedObjects"></ul>
         </div>
     </div>
-
-    <div class="permission-prompt" id="permissionPrompt">
-        <p>This app needs camera access to work. Please allow camera access in your browser settings.</p>
-        <button class="control-button" onclick="this.parentElement.style.display='none';">OK</button>
-    </div>
     
     <script>
         const video = document.getElementById('video');
@@ -245,92 +149,25 @@
         const ctx = canvas.getContext('2d');
         const detectedObjectsList = document.getElementById('detectedObjects');
         const statusDiv = document.getElementById('status');
-        const errorDiv = document.getElementById('error');
         const loadModelBtn = document.getElementById('loadModel');
         const startCameraBtn = document.getElementById('startCamera');
         const startDetectionBtn = document.getElementById('startDetection');
-        const switchCameraButton = document.getElementById('switchCamera');
-        const permissionPrompt = document.getElementById('permissionPrompt');
+        const switchCameraBtn = document.getElementById('switchCamera');
 
-        const detectedObjects = new Map();
         let model = null;
         let isDetecting = false;
         let currentFacingMode = 'environment';
         let stream = null;
 
-        // Debug information
-        console.log('Browser:', navigator.userAgent);
-        console.log('Checking camera API availability:');
-        console.log('mediaDevices:', !!navigator.mediaDevices);
-        console.log('getUserMedia:', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
-
-        function showError(message, isWarning = false) {
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            errorDiv.style.backgroundColor = isWarning ? '#fff3cd' : '#fee8e7';
-            console.log(`${isWarning ? 'Warning' : 'Error'}: ${message}`);
-            updateStatus(message);
-        }
-
         function updateStatus(message) {
             statusDiv.textContent = message;
-            console.log('Status:', message);
+            console.log(message);
         }
 
-        function updateCanvasSize() {
-            requestAnimationFrame(() => {
-                const videoWidth = video.videoWidth || video.clientWidth;
-                const videoHeight = video.videoHeight || video.clientHeight;
-                
-                canvas.width = videoWidth;
-                canvas.height = videoHeight;
-                
-                const scale = Math.min(
-                    video.clientWidth / videoWidth,
-                    video.clientHeight / videoHeight
-                );
-                
-                canvas.style.width = `${videoWidth * scale}px`;
-                canvas.style.height = `${videoHeight * scale}px`;
-            });
-        }
-
-        async function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                stream = null;
-            }
-            video.srcObject = null;
-        }
-
-        async function checkCameraSupport() {
-            updateStatus('Checking camera support...');
-            
-            if (!navigator.mediaDevices) {
-                showError('MediaDevices API not supported in this browser');
-                return false;
-            }
-
-            if (!navigator.mediaDevices.getUserMedia) {
-                showError('getUserMedia not supported in this browser');
-                return false;
-            }
-
-            try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const cameras = devices.filter(device => device.kind === 'videoinput');
-                
-                if (cameras.length === 0) {
-                    showError('No cameras found on this device');
-                    return false;
-                }
-
-                updateStatus(`Found ${cameras.length} camera(s)`);
-                cameras.forEach(camera => console.log('Camera:', camera.label || 'unnamed camera'));
-                return true;
-            } catch (error) {
-                showError(`Error checking cameras: ${error.message}`);
-                return false;
+        function updateCanvas() {
+            if (video.videoWidth && video.videoHeight) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
             }
         }
 
@@ -339,106 +176,56 @@
                 loadModelBtn.disabled = true;
                 updateStatus('Loading model...');
                 model = await cocoSsd.load();
-                updateStatus('Model loaded successfully!');
+                updateStatus('Model loaded');
                 startCameraBtn.disabled = false;
             } catch (error) {
-                showError('Error loading model: ' + error.message);
+                updateStatus('Error loading model: ' + error.message);
                 loadModelBtn.disabled = false;
             }
         });
 
-        async function initCamera(constraints) {
+        async function setupCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            const constraints = {
+                video: { facingMode: currentFacingMode },
+                audio: false
+            };
+
             try {
-                updateStatus('Stopping any existing camera stream...');
-                await stopCamera();
-
-                updateStatus('Requesting camera access...');
-                console.log('Camera constraints:', constraints);
-                
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
-                updateStatus('Camera access granted');
-                
                 video.srcObject = stream;
-                video.style.display = 'block';
-
-                return new Promise((resolve, reject) => {
-                    const timeoutId = setTimeout(() => {
-                        reject(new Error('Camera initialization timed out'));
-                    }, 10000);
-
-                    video.onerror = (error) => {
-                        clearTimeout(timeoutId);
-                        reject(new Error(`Video error: ${error.message || 'Unknown video error'}`));
-                    };
-
-                    video.onloadedmetadata = async () => {
-                        clearTimeout(timeoutId);
-                        try {
-                            updateStatus('Video metadata loaded, starting playback...');
-                            await video.play();
-                            updateStatus('Video playback started');
-                            updateCanvasSize();
-                            resolve();
-                        } catch (error) {
-                            reject(new Error(`Failed to start video: ${error.message}`));
-                        }
+                
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        updateCanvas();
+                        resolve();
                     };
                 });
             } catch (error) {
-                if (error.name === 'NotAllowedError') {
-                    showError('Camera access denied. Please allow camera access and try again.');
-                    permissionPrompt.style.display = 'block';
-                } else if (error.name === 'NotReadableError') {
-                    showError('Camera is in use by another application or not available.');
-                } else if (error.name === 'OverconstrainedError') {
-                    showError('Trying with lower resolution...', true);
-                    return initCamera({
-                        video: {
-                            facingMode: currentFacingMode,
-                            width: { ideal: 320 },
-                            height: { ideal: 240 }
-                        },
-                        audio: false
-                    });
-                } else {
-                    showError(`Camera error: ${error.name} - ${error.message}`);
-                }
-                throw error;
+                throw new Error(`Camera access failed: ${error.message}`);
             }
         }
 
         startCameraBtn.addEventListener('click', async () => {
             try {
                 startCameraBtn.disabled = true;
-                errorDiv.style.display = 'none';
-                updateStatus('Starting camera initialization...');
-
-                if (!await checkCameraSupport()) {
-                    startCameraBtn.disabled = false;
-                    return;
-                }
-
-                const constraints = {
-                    video: {
-                        facingMode: currentFacingMode,
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        frameRate: { ideal: 15 }
-                    },
-                    audio: false
-                };
-
-                await initCamera(constraints);
-                updateStatus('Camera ready!');
+                updateStatus('Starting camera...');
+                
+                await setupCamera();
+                updateStatus('Camera ready');
                 startDetectionBtn.disabled = false;
 
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const cameras = devices.filter(device => device.kind === 'videoinput');
                 if (cameras.length > 1) {
-                    switchCameraButton.style.display = 'block';
+                    switchCameraBtn.style.display = 'block';
                 }
-
             } catch (error) {
+                updateStatus(error.message);
                 startCameraBtn.disabled = false;
             }
         });
@@ -449,108 +236,57 @@
             detectObjects();
         });
 
-        switchCameraButton.addEventListener('click', async () => {
+        switchCameraBtn.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
             try {
-                currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-                updateStatus('Switching camera...');
-                
-                const constraints = {
-                    video: {
-                        facingMode: currentFacingMode,
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    },
-                    audio: false
-                };
-
-                await initCamera(constraints);
-                updateStatus('Camera switched successfully');
+                await setupCamera();
+                updateStatus('Camera switched');
             } catch (error) {
-                showError('Error switching camera: ' + error.message);
+                updateStatus('Failed to switch camera: ' + error.message);
             }
         });
 
         async function detectObjects() {
-            if (isDetecting) return;
-            isDetecting = true;
+            if (!isDetecting) {
+                isDetecting = true;
+                try {
+                    const predictions = await model.detect(video);
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            try {
-                const predictions = await model.detect(video);
-                
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    predictions.forEach(prediction => {
+                        // Draw box
+                        ctx.strokeStyle = '#00ff00';
+                        ctx.lineWidth = 4;
+                        ctx.strokeRect(...prediction.bbox);
 
-                const displayWidth = video.clientWidth;
-                const displayHeight = video.clientHeight;
-                
-                const scaleX = canvas.width / video.videoWidth;
-                const scaleY = canvas.height / video.videoHeight;
-
-                predictions.forEach(prediction => {
-                    const x = prediction.bbox[0] * scaleX;
-                    const y = prediction.bbox[1] * scaleY;
-                    const width = prediction.bbox[2] * scaleX;
-                    const height = prediction.bbox[3] * scaleY;
-
-                    ctx.strokeStyle = '#00ff00';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(x, y, width, height);
-
-                    const label = `${prediction.class} (${Math.round(prediction.score * 100)}%)`;
-                    ctx.font = '16px Arial';
-                    
-                    const textMetrics = ctx.measureText(label);
-                    const textHeight = 16;
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                    ctx.fillRect(
-                        x, 
-                        y > textHeight ? y - textHeight : y + height,
-                        textMetrics.width + 4,
-                        textHeight
-                    );
-                    
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillText(
-                        label,
-                        x + 2,
-                        y > textHeight ? y - 2 : y + height + textHeight - 2
-                    );
-
-                    if (!detectedObjects.has(prediction.class)) {
-                        const timestamp = new Date().toLocaleTimeString();
-                        detectedObjects.set(prediction.class, timestamp);
-                        updateDetectionsList();
-                    }
-                });
-            } catch (error) {
-                console.error('Detection error:', error);
-            }
-
-            isDetecting = false;
-            if (video.srcObject && video.srcObject.active) {
-                setTimeout(detectObjects, 500);
+                        // Draw label
+                        const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`;
+                        ctx.fillStyle = '#00ff00';
+                        ctx.font = '16px Arial';
+                        ctx.fillText(label, prediction.bbox[0], prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : prediction.bbox[1] + 20);
+                        
+                        // Add to list if new
+                        if (!detectedObjectsList.querySelector(`[data-object="${prediction.class}"]`)) {
+                            const li = document.createElement('li');
+                            li.setAttribute('data-object', prediction.class);
+                            li.innerHTML = `
+                                <span>${prediction.class}</span>
+                                <span>${new Date().toLocaleTimeString()}</span>
+                            `;
+                            detectedObjectsList.appendChild(li);
+                        }
+                    });
+                } catch (error) {
+                    console.error('Detection error:', error);
+                }
+                isDetecting = false;
+                if (video.srcObject?.active) {
+                    requestAnimationFrame(detectObjects);
+                }
             }
         }
 
-        function updateDetectionsList() {
-            detectedObjectsList.innerHTML = '';
-            detectedObjects.forEach((timestamp, object) => {
-                const li = document.createElement('li');
-                li.innerHTML = `
-                    <span>${object}</span>
-                    <span>${timestamp}</span>
-                `;
-                detectedObjectsList.appendChild(li);
-            });
-        }
-
-        // Event listeners
-        window.addEventListener('resize', updateCanvasSize);
-        window.addEventListener('orientationchange', () => {
-            setTimeout(updateCanvasSize, 100);
-        });
-
-        window.addEventListener('beforeunload', stopCamera);
-
+        // Handle page visibility
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 isDetecting = false;
@@ -559,26 +295,12 @@
             }
         });
 
-        video.addEventListener('playing', () => {
-            updateStatus('Video is playing');
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
         });
-
-        video.addEventListener('pause', () => {
-            updateStatus('Video paused');
-        });
-
-        video.addEventListener('suspend', () => {
-            updateStatus('Video suspended');
-        });
-
-        video.addEventListener('waiting', () => {
-            updateStatus('Video buffering...');
-        });
-
-        if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-            video.setAttribute('playsinline', '');
-            video.setAttribute('webkit-playsinline', '');
-        }
     </script>
 </body>
 </html>
