@@ -2,21 +2,89 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Real-time Object Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
-        /* Previous styles remain the same */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f2f5;
+            overscroll-behavior: none;
+        }
+
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 24px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .control-panel {
+            background-color: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .video-container {
+            position: relative;
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+        }
+
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
 
         .control-button {
-            padding: 10px 20px;
-            margin: 10px;
+            padding: 12px 20px;
+            margin: 5px;
             background-color: #1a73e8;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+            -webkit-appearance: none;
         }
 
         .control-button:disabled {
@@ -24,27 +92,141 @@
             cursor: not-allowed;
         }
 
+        .control-button:active {
+            background-color: #1557b0;
+        }
+
+        #switchCamera {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1000;
+            display: none;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+
         .status {
-            margin: 10px;
+            margin: 10px 0;
             padding: 10px;
+            background-color: #e3f2fd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .detection-list {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-height: 400px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .detection-list h2 {
+            margin-bottom: 15px;
+            color: #5f6368;
+        }
+
+        #detectedObjects {
+            list-style: none;
+        }
+
+        #detectedObjects li {
+            padding: 10px;
+            margin: 5px 0;
             background-color: #f8f9fa;
             border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+
+        .error-message {
+            background-color: #fee8e7;
+            color: #d93025;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .permission-prompt {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1001;
+            max-width: 80%;
+            text-align: center;
+        }
+
+        .permission-prompt button {
+            margin-top: 15px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                grid-template-columns: 1fr;
+            }
+
+            .control-button {
+                width: calc(50% - 10px);
+                margin: 5px;
+                padding: 10px;
+                font-size: 13px;
+            }
+
+            h1 {
+                font-size: 20px;
+                margin-bottom: 15px;
+            }
+
+            .status {
+                font-size: 13px;
+            }
+        }
+
+        @supports (-webkit-touch-callout: none) {
+            /* iOS-specific styles */
+            .video-container {
+                transform: translateZ(0);
+            }
         }
     </style>
 </head>
 <body>
     <h1>Real-time Object Detection</h1>
+    
+    <div class="control-panel">
+        <button id="loadModel" class="control-button">1. Load Model</button>
+        <button id="startCamera" class="control-button" disabled>2. Start Camera</button>
+        <button id="startDetection" class="control-button" disabled>3. Start Detection</button>
+        <div id="status" class="status">Click buttons above to start</div>
+        <div id="error" class="error-message"></div>
+    </div>
+
     <div class="container">
         <div class="video-container">
-            <div class="status" id="status">Click buttons below to start</div>
-            <button id="loadModel" class="control-button">1. Load Model</button>
-            <button id="startCamera" class="control-button" disabled>2. Start Camera</button>
-            <button id="startDetection" class="control-button" disabled>3. Start Detection</button>
-            <video id="video" playsinline style="display: none;"></video>
+            <video id="video" playsinline webkit-playsinline></video>
             <canvas id="canvas"></canvas>
-            <button id="switchCamera" style="display: none;">Switch Camera</button>
-            <div id="error" class="error-message"></div>
-            <div id="debugInfo" class="debug-info"></div>
+            <button id="switchCamera">Switch Camera</button>
         </div>
         <div class="detection-list">
             <h2>Detected Objects</h2>
@@ -52,35 +234,68 @@
         </div>
     </div>
 
+    <div class="permission-prompt" id="permissionPrompt">
+        <p>This app needs camera access to work. Please allow camera access in your browser settings.</p>
+        <button class="control-button" onclick="this.parentElement.style.display='none';">OK</button>
+    </div>
+    
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const detectedObjectsList = document.getElementById('detectedObjects');
-        const errorDiv = document.getElementById('error');
-        const debugInfo = document.getElementById('debugInfo');
         const statusDiv = document.getElementById('status');
+        const errorDiv = document.getElementById('error');
         const loadModelBtn = document.getElementById('loadModel');
         const startCameraBtn = document.getElementById('startCamera');
         const startDetectionBtn = document.getElementById('startDetection');
         const switchCameraButton = document.getElementById('switchCamera');
+        const permissionPrompt = document.getElementById('permissionPrompt');
 
         const detectedObjects = new Map();
         let model = null;
         let isDetecting = false;
         let currentFacingMode = 'environment';
+        let stream = null;
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            console.error(message);
+        }
 
         function updateStatus(message) {
             statusDiv.textContent = message;
             console.log(message);
         }
 
-        function updateDebug(message) {
-            debugInfo.innerHTML += message + '<br>';
-            console.log(message);
+        function updateCanvasSize() {
+            requestAnimationFrame(() => {
+                const videoWidth = video.videoWidth || video.clientWidth;
+                const videoHeight = video.videoHeight || video.clientHeight;
+                
+                canvas.width = videoWidth;
+                canvas.height = videoHeight;
+                
+                // Calculate scale to maintain aspect ratio
+                const scale = Math.min(
+                    video.clientWidth / videoWidth,
+                    video.clientHeight / videoHeight
+                );
+                
+                canvas.style.width = `${videoWidth * scale}px`;
+                canvas.style.height = `${videoHeight * scale}px`;
+            });
         }
 
-        // Load Model Button Handler
+        async function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            video.srcObject = null;
+        }
+
         loadModelBtn.addEventListener('click', async () => {
             try {
                 loadModelBtn.disabled = true;
@@ -89,73 +304,98 @@
                 updateStatus('Model loaded successfully!');
                 startCameraBtn.disabled = false;
             } catch (error) {
-                updateStatus('Error loading model: ' + error.message);
+                showError('Error loading model: ' + error.message);
                 loadModelBtn.disabled = false;
             }
         });
 
-        // Start Camera Button Handler
+        async function initCamera(constraints) {
+            try {
+                await stopCamera();
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                return new Promise((resolve, reject) => {
+                    const timeoutId = setTimeout(() => {
+                        reject(new Error('Camera initialization timed out'));
+                    }, 10000);
+
+                    video.onloadedmetadata = async () => {
+                        clearTimeout(timeoutId);
+                        try {
+                            await video.play();
+                            updateCanvasSize();
+                            resolve();
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+                });
+            } catch (error) {
+                if (error.name === 'NotAllowedError') {
+                    permissionPrompt.style.display = 'block';
+                }
+                throw error;
+            }
+        }
+
         startCameraBtn.addEventListener('click', async () => {
             try {
                 startCameraBtn.disabled = true;
                 updateStatus('Starting camera...');
-                
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode },
+                errorDiv.style.display = 'none';
+
+                const constraints = {
+                    video: {
+                        facingMode: currentFacingMode,
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 15 }
+                    },
                     audio: false
-                });
-                
-                video.srcObject = stream;
-                video.style.display = 'block';
-                
-                video.onloadedmetadata = () => {
-                    video.play();
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    updateStatus('Camera ready!');
-                    startDetectionBtn.disabled = false;
                 };
-                
+
+                await initCamera(constraints);
+                updateStatus('Camera ready!');
+                startDetectionBtn.disabled = false;
+
                 // Check for multiple cameras
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const cameras = devices.filter(device => device.kind === 'videoinput');
                 if (cameras.length > 1) {
                     switchCameraButton.style.display = 'block';
                 }
-                
+
             } catch (error) {
-                updateStatus('Camera error: ' + error.message);
+                showError('Camera error: ' + error.message);
                 startCameraBtn.disabled = false;
             }
         });
 
-        // Start Detection Button Handler
         startDetectionBtn.addEventListener('click', () => {
             startDetectionBtn.disabled = true;
             updateStatus('Starting detection...');
             detectObjects();
         });
 
-        // Switch Camera Button Handler
         switchCameraButton.addEventListener('click', async () => {
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-            }
-            
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode },
-                    audio: false
-                });
+                currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+                updateStatus('Switching camera...');
                 
-                video.srcObject = stream;
-                await video.play();
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
+                const constraints = {
+                    video: {
+                        facingMode: currentFacingMode,
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                };
+
+                await initCamera(constraints);
+                updateStatus('Camera switched successfully');
             } catch (error) {
-                updateStatus('Error switching camera: ' + error.message);
+                showError('Error switching camera: ' + error.message);
             }
         });
 
@@ -168,24 +408,48 @@
                 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+                // Get the actual dimensions of the video display
+                const displayWidth = video.clientWidth;
+                const displayHeight = video.clientHeight;
+                
+                // Calculate scaling factors
+                const scaleX = canvas.width / video.videoWidth;
+                const scaleY = canvas.height / video.videoHeight;
+
                 predictions.forEach(prediction => {
+                    // Scale the bounding box coordinates
+                    const x = prediction.bbox[0] * scaleX;
+                    const y = prediction.bbox[1] * scaleY;
+                    const width = prediction.bbox[2] * scaleX;
+                    const height = prediction.bbox[3] * scaleY;
+
                     // Draw bounding box
                     ctx.strokeStyle = '#00ff00';
                     ctx.lineWidth = 2;
-                    ctx.strokeRect(
-                        prediction.bbox[0],
-                        prediction.bbox[1],
-                        prediction.bbox[2],
-                        prediction.bbox[3]
-                    );
+                    ctx.strokeRect(x, y, width, height);
 
-                    // Draw label
+                    // Draw label with confidence
+                    const label = `${prediction.class} (${Math.round(prediction.score * 100)}%)`;
                     ctx.fillStyle = '#00ff00';
                     ctx.font = '16px Arial';
+                    
+                    // Add background to text for better visibility
+                    const textMetrics = ctx.measureText(label);
+                    const textHeight = 16; // Approximate height of font
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                    ctx.fillRect(
+                        x, 
+                        y > textHeight ? y - textHeight : y + height,
+                        textMetrics.width + 4,
+                        textHeight
+                    );
+                    
+                    // Draw text
+                    ctx.fillStyle = '#ffffff';
                     ctx.fillText(
-                        `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
-                        prediction.bbox[0],
-                        prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : prediction.bbox[1] + 20
+                        label,
+                        x + 2,
+                        y > textHeight ? y - 2 : y + height + textHeight - 2
                     );
 
                     if (!detectedObjects.has(prediction.class)) {
@@ -195,11 +459,13 @@
                     }
                 });
             } catch (error) {
-                updateStatus('Detection error: ' + error.message);
+                console.error('Detection error:', error);
             }
 
             isDetecting = false;
-            setTimeout(detectObjects, 500);
+            if (video.srcObject && video.srcObject.active) {
+                setTimeout(detectObjects, 500);
+            }
         }
 
         function updateDetectionsList() {
@@ -213,6 +479,31 @@
                 detectedObjectsList.appendChild(li);
             });
         }
+
+        // Handle window resize and orientation changes
+        window.addEventListener('resize', updateCanvasSize);
+        window.addEventListener('orientationchange', () => {
+            setTimeout(updateCanvasSize, 100);
+        });
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', stopCamera);
+
+        // Handle visibility change
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                isDetecting = false;
+            } else if (startDetectionBtn.disabled) {
+                detectObjects();
+            }
+        });
+
+        // Handle iOS WebKit quirks
+        if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+            video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', '');
+        }
     </script>
+    
 </body>
 </html>
