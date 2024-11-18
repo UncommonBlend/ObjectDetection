@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Object Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .video-container {
+            position: relative;
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .detection-list {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #5f6368;
+            margin-bottom: 15px;
+        }
+
+        #detectedObjects {
+            list-style: none;
+        }
+
+        #detectedObjects li {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .error-message {
+            color: #d93025;
+            padding: 10px;
+            background-color: #fce8e6;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #5f6368;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Real-time Object Detection</h1>
+    <div class="container">
+        <div class="video-container">
+            <video id="video" playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div id="error" class="error-message"></div>
+            <div id="loading" class="loading">Loading model...</div>
+        </div>
+        <div class="detection-list">
+            <h2>Detected Objects</h2>
+            <ul id="detectedObjects"></ul>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const detectedObjectsList = document.getElementById('detectedObjects');
+        const errorDiv = document.getElementById('error');
+        const loadingDiv = document.getElementById('loading');
+
+        const detectedObjects = new Map(); // Store unique detections
+        let model = null;
+        let isDetecting = false;
+
+        // Initialize the application
+        async function init() {
+            try {
+                // Load COCO-SSD model
+                model = await cocoSsd.load();
+                
+                // Setup webcam
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' },
+                    audio: false
+                });
+                video.srcObject = stream;
+                
+                // Wait for video to be ready
+                await new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+
+                // Start video
+                video.play();
+
+                // Set canvas dimensions
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                // Hide loading message
+                loadingDiv.style.display = 'none';
+
+                // Start detection loop
+                detectObjects();
+            } catch (error) {
+                console.error('Error:', error);
+                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        // Perform object detection
+        async function detectObjects() {
+            if (isDetecting) return;
+            isDetecting = true;
+
+            try {
+                const predictions = await model.detect(video);
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw detections
+                predictions.forEach(prediction => {
+                    // Draw bounding box
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        prediction.bbox[0],
+                        prediction.bbox[1],
+                        prediction.bbox[2],
+                        prediction.bbox[3]
+                    );
+
+                    // Draw label
+                    ctx.fillStyle = '#00ff00';
+                    ctx.font = '16px Arial';
+                    ctx.fillText(
+                        `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+                        prediction.bbox[0],
+                        prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : prediction.bbox[1] + 20
+                    );
+
+                    // Add to unique detections if new
+                    if (!detectedObjects.has(prediction.class)) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        detectedObjects.set(prediction.class, timestamp);
+                        updateDetectionsList();
+                    }
+                });
+            } catch (error) {
+                console.error('Detection error:', error);
+            }
+
+            isDetecting = false;
+            // Schedule next detection (2 FPS)
+            setTimeout(detectObjects, 500);
+        }
+
+        // Update the list of detected objects
+        function updateDetectionsList() {
+            detectedObjectsList.innerHTML = '';
+            detectedObjects.forEach((timestamp, object) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${object}</span>
+                    <span>${timestamp}</span>
+                `;
+                detectedObjectsList.appendChild(li);
+            });
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
