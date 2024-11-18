@@ -185,66 +185,71 @@
         });
 
         async function setupCamera() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
+    updateStatus('Setting up camera...');
+    
+    // First, stop any existing stream
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+    }
 
-            const constraints = {
-                video: { facingMode: currentFacingMode },
-                audio: false
-            };
-
-            try {
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-                
-                return new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        video.play();
-                        updateCanvas();
-                        resolve();
-                    };
-                });
-            } catch (error) {
-                throw new Error(`Camera access failed: ${error.message}`);
-            }
+    // Try different constraints in order of preference
+    const constraintSets = [
+        { // Basic constraints first
+            video: true,
+            audio: false
+        },
+        { // Then try with facing mode
+            video: {
+                facingMode: currentFacingMode
+            },
+            audio: false
+        },
+        { // Finally try with specific dimensions
+            video: {
+                facingMode: currentFacingMode,
+                width: { ideal: 320 },
+                height: { ideal: 240 }
+            },
+            audio: false
         }
+    ];
 
-        startCameraBtn.addEventListener('click', async () => {
-            try {
-                startCameraBtn.disabled = true;
-                updateStatus('Starting camera...');
-                
-                await setupCamera();
-                updateStatus('Camera ready');
-                startDetectionBtn.disabled = false;
+    for (const constraints of constraintSets) {
+        try {
+            updateStatus('Requesting camera access...');
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            break; // If successful, exit the loop
+        } catch (error) {
+            updateStatus(`Trying different camera settings... (${error.message})`);
+            continue;
+        }
+    }
 
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const cameras = devices.filter(device => device.kind === 'videoinput');
-                if (cameras.length > 1) {
-                    switchCameraBtn.style.display = 'block';
-                }
-            } catch (error) {
-                updateStatus(error.message);
-                startCameraBtn.disabled = false;
-            }
-        });
+    if (!stream) {
+        throw new Error('Could not initialize camera with any settings');
+    }
 
-        startDetectionBtn.addEventListener('click', () => {
-            startDetectionBtn.disabled = true;
-            updateStatus('Starting detection...');
-            detectObjects();
-        });
+    // Set video source
+    video.srcObject = stream;
+    video.style.display = 'block';
 
-        switchCameraBtn.addEventListener('click', async () => {
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            try {
-                await setupCamera();
-                updateStatus('Camera switched');
-            } catch (error) {
-                updateStatus('Failed to switch camera: ' + error.message);
-            }
-        });
+    // Return promise that resolves when video is ready
+    return new Promise((resolve) => {
+        video.onloadeddata = () => {
+            updateStatus('Camera stream loaded');
+            resolve();
+        };
+        
+        // Also resolve if we get metadata or can play
+        video.onloadedmetadata = () => {
+            video.play().catch(console.error);
+        };
+        
+        // Set a backup timeout to resolve anyway
+        setTimeout(resolve, 2000);
+    });
+}
 
         async function detectObjects() {
             if (!isDetecting) {
