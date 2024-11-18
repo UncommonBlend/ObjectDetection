@@ -255,73 +255,125 @@
             }
         }
 
-        async function init() {
-            try {
-                debugInfo.style.display = 'block';
-                updateDebugInfo('Initializing...');
-                
-                if (!isSecureContext()) {
-                    throw new Error(
-                        'This page must be accessed over HTTPS or localhost to use the camera. ' +
-                        'Current protocol: ' + location.protocol
-                    );
-                }
+		async function init() {
+			try {
+				debugInfo.style.display = 'block';
+				updateDebugInfo('Initializing...');
+		
+				if (!isSecureContext()) {
+					throw new Error(
+						'This page must be accessed over HTTPS or localhost to use the camera. ' +
+						'Current protocol: ' + location.protocol
+					);
+				}
 
-                updateDebugInfo('Checking camera API support...');
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error(
-                        'Your browser doesn\'t support the camera API. ' +
-                        'Please try using a modern browser like Chrome, Firefox, or Safari.'
-                    );
-                }
+				updateDebugInfo('Checking camera API support...');
+				if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+					throw new Error(
+						'Your browser doesn\'t support the camera API. ' +
+						'Please try using a modern browser like Chrome, Firefox, or Safari.'
+					);
+				}
 
-                await checkIfMobileWithMultipleCameras();
+				await checkIfMobileWithMultipleCameras();
 
-                updateDebugInfo('Loading COCO-SSD model...');
-                model = await cocoSsd.load();
-                updateDebugInfo('✓ Model loaded successfully');
-                
-                updateDebugInfo('Setting up camera...');
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: currentFacingMode,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
-                });
-                video.srcObject = stream;
-                
-                await new Promise(resolve => {
-                    video.onloadedmetadata = () => {
-                        updateDebugInfo('✓ Video metadata loaded');
-                        resolve();
-                    };
-                });
+				// Set a timeout for model loading
+				const modelPromise = cocoSsd.load();
+				const modelTimeout = new Promise((resolve, reject) => {
+					setTimeout(() => reject(new Error('Model loading timed out')), 30000);
+				});
 
-                await video.play();
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                loadingDiv.style.display = 'none';
-                updateDebugInfo('✓ Camera setup complete');
-                detectObjects();
+				updateDebugInfo('Loading COCO-SSD model...');
+				try {
+					model = await Promise.race([modelPromise, modelTimeout]);
+					updateDebugInfo('✓ Model loaded successfully');
+				} catch (modelError) {
+					updateDebugInfo('❌ Error loading model: ' + modelError.message);
+					throw modelError;
+				}
 
-            } catch (error) {
-                console.error('Error:', error);
-                updateDebugInfo(`❌ Error: ${error.message}`);
-                errorDiv.innerHTML = `
-                    <div class="security-warning">
-                        ${error.message}
-                        ${!isSecureContext() ? '<br><br>To fix this, either:<br>' +
-                            '1. Upload this page to a web server that supports HTTPS<br>' +
-                            '2. Use a local development server with HTTPS<br>' +
-                            '3. Access this page through localhost' : ''}
-                    </div>`;
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
-            }
-        }
+				updateDebugInfo('Setting up camera with constraints...');
+				const constraints = {
+					video: { 
+						facingMode: currentFacingMode,
+						width: { ideal: 1280 },
+						height: { ideal: 720 }
+					},
+					audio: false
+				};
+				updateDebugInfo('Camera constraints: ' + JSON.stringify(constraints));
 
+				try {
+					updateDebugInfo('Requesting camera access...');
+					const stream = await navigator.mediaDevices.getUserMedia(constraints);
+					updateDebugInfo('✓ Camera access granted');
+			
+					video.srcObject = stream;
+					updateDebugInfo('Video source set');
+
+					// Add error handler for video
+					video.onerror = (e) => {
+						updateDebugInfo(`❌ Video error: ${e.message}`);
+					};
+
+					// Add more detailed video element event handlers
+					video.onloadstart = () => updateDebugInfo('Video load started');
+					video.oncanplay = () => updateDebugInfo('Video can play');
+					video.onplaying = () => updateDebugInfo('Video is playing');
+
+					updateDebugInfo('Waiting for video metadata...');
+					await new Promise((resolve, reject) => {
+						video.onloadedmetadata = () => {
+							updateDebugInfo('✓ Video metadata loaded');
+							resolve();
+						};
+						// Add timeout for metadata loading
+						setTimeout(() => reject(new Error('Video metadata loading timed out')), 10000);
+					});
+
+					updateDebugInfo('Starting video playback...');
+					try {
+						await video.play();
+						updateDebugInfo('✓ Video playback started');
+					} catch (playError) {
+						updateDebugInfo('❌ Error starting video playback: ' + playError.message);
+						throw playError;
+					}
+
+					canvas.width = video.videoWidth;
+					canvas.height = video.videoHeight;
+					updateDebugInfo(`Canvas size set to ${canvas.width}x${canvas.height}`);
+			
+					loadingDiv.style.display = 'none';
+					updateDebugInfo('✓ Camera setup complete');
+			
+					// Start detection with a slight delay to ensure everything is ready
+					setTimeout(() => {
+						updateDebugInfo('Starting object detection...');
+						detectObjects();
+					}, 1000);
+
+				} catch (cameraError) {
+					updateDebugInfo('❌ Camera setup error: ' + cameraError.message);
+					throw cameraError;
+				}
+
+			} catch (error) {
+				console.error('Error:', error);
+				updateDebugInfo(`❌ Error: ${error.message}`);
+				errorDiv.innerHTML = `
+					<div class="security-warning">
+						${error.message}
+						${!isSecureContext() ? '<br><br>To fix this, either:<br>' +
+							'1. Upload this page to a web server that supports HTTPS<br>' +
+							'2. Use a local development server with HTTPS<br>' +
+							'3. Access this page through localhost' : ''}
+					</div>`;
+				errorDiv.style.display = 'block';
+				loadingDiv.style.display = 'none';
+			}
+		}
+ 
         async function detectObjects() {
             if (isDetecting) return;
             isDetecting = true;
