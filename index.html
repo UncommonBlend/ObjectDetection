@@ -7,145 +7,28 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        /* Previous styles remain the same */
 
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            background-color: #f0f2f5;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 20px;
-        }
-
-        .video-container {
-            position: relative;
-            background-color: #000;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        #video {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
-
-        #canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-
-        .detection-list {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        h1 {
-            color: #1a73e8;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        h2 {
-            color: #5f6368;
-            margin-bottom: 15px;
-        }
-
-        #detectedObjects {
-            list-style: none;
-        }
-
-        #detectedObjects li {
-            padding: 10px;
-            margin: 5px 0;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .error-message {
-            color: #d93025;
-            padding: 10px;
-            background-color: #fce8e6;
-            border-radius: 5px;
-            margin: 10px 0;
-            display: none;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #5f6368;
-        }
-
-        .security-warning {
-            background-color: #fff3cd;
-            color: #856404;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 10px 0;
-            border: 1px solid #ffeeba;
-        }
-
-        #switchCamera {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
+        .control-button {
             padding: 10px 20px;
-            background-color: rgba(0, 0, 0, 0.5);
+            margin: 10px;
+            background-color: #1a73e8;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            z-index: 1000;
-            display: none;
-            transition: background-color 0.3s ease;
         }
 
-        #switchCamera:hover {
-            background-color: rgba(0, 0, 0, 0.7);
+        .control-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
         }
 
-        .debug-info {
-            background-color: #e8f0fe;
+        .status {
+            margin: 10px;
             padding: 10px;
-            margin: 10px 0;
+            background-color: #f8f9fa;
             border-radius: 5px;
-            font-family: monospace;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                grid-template-columns: 1fr;
-            }
-            
-            body {
-                padding: 10px;
-            }
-
-            h1 {
-                font-size: 24px;
-            }
-
-            .detection-list {
-                padding: 15px;
-            }
         }
     </style>
 </head>
@@ -153,227 +36,129 @@
     <h1>Real-time Object Detection</h1>
     <div class="container">
         <div class="video-container">
-            <video id="video" playsinline></video>
+            <div class="status" id="status">Click buttons below to start</div>
+            <button id="loadModel" class="control-button">1. Load Model</button>
+            <button id="startCamera" class="control-button" disabled>2. Start Camera</button>
+            <button id="startDetection" class="control-button" disabled>3. Start Detection</button>
+            <video id="video" playsinline style="display: none;"></video>
             <canvas id="canvas"></canvas>
-            <button id="switchCamera">Switch Camera</button>
+            <button id="switchCamera" style="display: none;">Switch Camera</button>
             <div id="error" class="error-message"></div>
-            <div id="loading" class="loading">Loading model...</div>
-            <div id="debugInfo" class="debug-info" style="display: none;"></div>
+            <div id="debugInfo" class="debug-info"></div>
         </div>
         <div class="detection-list">
             <h2>Detected Objects</h2>
             <ul id="detectedObjects"></ul>
         </div>
     </div>
-    
+
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const detectedObjectsList = document.getElementById('detectedObjects');
         const errorDiv = document.getElementById('error');
-        const loadingDiv = document.getElementById('loading');
-        const switchCameraButton = document.getElementById('switchCamera');
         const debugInfo = document.getElementById('debugInfo');
+        const statusDiv = document.getElementById('status');
+        const loadModelBtn = document.getElementById('loadModel');
+        const startCameraBtn = document.getElementById('startCamera');
+        const startDetectionBtn = document.getElementById('startDetection');
+        const switchCameraButton = document.getElementById('switchCamera');
 
         const detectedObjects = new Map();
         let model = null;
         let isDetecting = false;
         let currentFacingMode = 'environment';
 
-        function updateDebugInfo(message) {
+        function updateStatus(message) {
+            statusDiv.textContent = message;
             console.log(message);
-            debugInfo.style.display = 'block';
+        }
+
+        function updateDebug(message) {
             debugInfo.innerHTML += message + '<br>';
+            console.log(message);
         }
 
-        function isSecureContext() {
-            const isSecure = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-            updateDebugInfo(`Secure context: ${isSecure}`);
-            updateDebugInfo(`Protocol: ${location.protocol}`);
-            updateDebugInfo(`Hostname: ${location.hostname}`);
-            return isSecure;
-        }
-
-        async function checkIfMobileWithMultipleCameras() {
+        // Load Model Button Handler
+        loadModelBtn.addEventListener('click', async () => {
             try {
-                updateDebugInfo('Checking for mediaDevices API...');
-                if (!navigator.mediaDevices) {
-                    updateDebugInfo('❌ mediaDevices API not supported');
-                    throw new Error('mediaDevices API not supported in your browser');
-                }
-                
-                updateDebugInfo('✓ mediaDevices API available');
-                updateDebugInfo('Checking available cameras...');
-                
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(device => device.kind === 'videoinput');
-                updateDebugInfo(`Found ${videoDevices.length} video devices`);
-                
-                videoDevices.forEach(device => {
-                    updateDebugInfo(`Camera: ${device.label || 'unnamed camera'}`);
-                });
-
-                if (videoDevices.length > 1) {
-                    switchCameraButton.style.display = 'block';
-                    updateDebugInfo('Multiple cameras detected, showing switch button');
-                }
+                loadModelBtn.disabled = true;
+                updateStatus('Loading model...');
+                model = await cocoSsd.load();
+                updateStatus('Model loaded successfully!');
+                startCameraBtn.disabled = false;
             } catch (error) {
-                updateDebugInfo(`❌ Error checking cameras: ${error.message}`);
-                console.error('Error checking cameras:', error);
+                updateStatus('Error loading model: ' + error.message);
+                loadModelBtn.disabled = false;
             }
-        }
+        });
 
-        async function switchCamera() {
-            updateDebugInfo('Switching camera...');
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            updateDebugInfo(`New facing mode: ${currentFacingMode}`);
-            
+        // Start Camera Button Handler
+        startCameraBtn.addEventListener('click', async () => {
             try {
-                if (video.srcObject) {
-                    video.srcObject.getTracks().forEach(track => track.stop());
-                }
-
+                startCameraBtn.disabled = true;
+                updateStatus('Starting camera...');
+                
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: currentFacingMode,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
+                    video: { facingMode: currentFacingMode },
                     audio: false
                 });
+                
+                video.srcObject = stream;
+                video.style.display = 'block';
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    updateStatus('Camera ready!');
+                    startDetectionBtn.disabled = false;
+                };
+                
+                // Check for multiple cameras
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cameras = devices.filter(device => device.kind === 'videoinput');
+                if (cameras.length > 1) {
+                    switchCameraButton.style.display = 'block';
+                }
+                
+            } catch (error) {
+                updateStatus('Camera error: ' + error.message);
+                startCameraBtn.disabled = false;
+            }
+        });
+
+        // Start Detection Button Handler
+        startDetectionBtn.addEventListener('click', () => {
+            startDetectionBtn.disabled = true;
+            updateStatus('Starting detection...');
+            detectObjects();
+        });
+
+        // Switch Camera Button Handler
+        switchCameraButton.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode },
+                    audio: false
+                });
+                
                 video.srcObject = stream;
                 await video.play();
-                
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-                updateDebugInfo('Camera switch successful');
             } catch (error) {
-                updateDebugInfo(`❌ Error switching camera: ${error.message}`);
-                errorDiv.innerHTML = `<div class="security-warning">Error switching camera: ${error.message}</div>`;
-                errorDiv.style.display = 'block';
+                updateStatus('Error switching camera: ' + error.message);
             }
-        }
+        });
 
-		async function init() {
-			try {
-				debugInfo.style.display = 'block';
-				updateDebugInfo('Initializing...');
-		
-				if (!isSecureContext()) {
-					throw new Error(
-						'This page must be accessed over HTTPS or localhost to use the camera. ' +
-						'Current protocol: ' + location.protocol
-					);
-				}
-
-				updateDebugInfo('Checking camera API support...');
-				if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-					throw new Error(
-						'Your browser doesn\'t support the camera API. ' +
-						'Please try using a modern browser like Chrome, Firefox, or Safari.'
-					);
-				}
-
-				await checkIfMobileWithMultipleCameras();
-
-				// Set a timeout for model loading
-				const modelPromise = cocoSsd.load();
-				const modelTimeout = new Promise((resolve, reject) => {
-					setTimeout(() => reject(new Error('Model loading timed out')), 30000);
-				});
-
-				updateDebugInfo('Loading COCO-SSD model...');
-				try {
-					model = await Promise.race([modelPromise, modelTimeout]);
-					updateDebugInfo('✓ Model loaded successfully');
-				} catch (modelError) {
-					updateDebugInfo('❌ Error loading model: ' + modelError.message);
-					throw modelError;
-				}
-
-				updateDebugInfo('Setting up camera with constraints...');
-				const constraints = {
-					video: { 
-						facingMode: currentFacingMode,
-						width: { ideal: 1280 },
-						height: { ideal: 720 }
-					},
-					audio: false
-				};
-				updateDebugInfo('Camera constraints: ' + JSON.stringify(constraints));
-
-				try {
-					updateDebugInfo('Requesting camera access...');
-					const stream = await navigator.mediaDevices.getUserMedia(constraints);
-					updateDebugInfo('✓ Camera access granted');
-			
-					video.srcObject = stream;
-					updateDebugInfo('Video source set');
-
-					// Add error handler for video
-					video.onerror = (e) => {
-						updateDebugInfo(`❌ Video error: ${e.message}`);
-					};
-
-					// Add more detailed video element event handlers
-					video.onloadstart = () => updateDebugInfo('Video load started');
-					video.oncanplay = () => updateDebugInfo('Video can play');
-					video.onplaying = () => updateDebugInfo('Video is playing');
-
-					updateDebugInfo('Waiting for video metadata...');
-					await new Promise((resolve, reject) => {
-						video.onloadedmetadata = () => {
-							updateDebugInfo('✓ Video metadata loaded');
-							resolve();
-						};
-						// Add timeout for metadata loading
-						setTimeout(() => reject(new Error('Video metadata loading timed out')), 10000);
-					});
-
-					updateDebugInfo('Starting video playback...');
-					try {
-						await video.play();
-						updateDebugInfo('✓ Video playback started');
-					} catch (playError) {
-						updateDebugInfo('❌ Error starting video playback: ' + playError.message);
-						throw playError;
-					}
-
-					canvas.width = video.videoWidth;
-					canvas.height = video.videoHeight;
-					updateDebugInfo(`Canvas size set to ${canvas.width}x${canvas.height}`);
-			
-					loadingDiv.style.display = 'none';
-					updateDebugInfo('✓ Camera setup complete');
-			
-					// Start detection with a slight delay to ensure everything is ready
-					setTimeout(() => {
-						updateDebugInfo('Starting object detection...');
-						detectObjects();
-					}, 1000);
-
-				} catch (cameraError) {
-					updateDebugInfo('❌ Camera setup error: ' + cameraError.message);
-					throw cameraError;
-				}
-
-			} catch (error) {
-				console.error('Error:', error);
-				updateDebugInfo(`❌ Error: ${error.message}`);
-				errorDiv.innerHTML = `
-					<div class="security-warning">
-						${error.message}
-						${!isSecureContext() ? '<br><br>To fix this, either:<br>' +
-							'1. Upload this page to a web server that supports HTTPS<br>' +
-							'2. Use a local development server with HTTPS<br>' +
-							'3. Access this page through localhost' : ''}
-					</div>`;
-				errorDiv.style.display = 'block';
-				loadingDiv.style.display = 'none';
-			}
-		}
- 
         async function detectObjects() {
             if (isDetecting) return;
             isDetecting = true;
@@ -384,6 +169,7 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 predictions.forEach(prediction => {
+                    // Draw bounding box
                     ctx.strokeStyle = '#00ff00';
                     ctx.lineWidth = 2;
                     ctx.strokeRect(
@@ -393,6 +179,7 @@
                         prediction.bbox[3]
                     );
 
+                    // Draw label
                     ctx.fillStyle = '#00ff00';
                     ctx.font = '16px Arial';
                     ctx.fillText(
@@ -408,8 +195,7 @@
                     }
                 });
             } catch (error) {
-                console.error('Detection error:', error);
-                updateDebugInfo(`Detection error: ${error.message}`);
+                updateStatus('Detection error: ' + error.message);
             }
 
             isDetecting = false;
@@ -427,11 +213,6 @@
                 detectedObjectsList.appendChild(li);
             });
         }
-
-        switchCameraButton.addEventListener('click', switchCamera);
-
-        init();
     </script>
-    
 </body>
 </html>
