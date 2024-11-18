@@ -1,102 +1,346 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Object Detection</title>
+    <title>Real-time Object Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
-        body { margin: 0; padding: 10px; }
-        #video { width: 100%; }
-        #canvas { position: absolute; left: 0; top: 0; }
-        .video-container { position: relative; }
-        button { padding: 10px; margin: 5px; }
-        #status { padding: 10px; margin: 10px 0; background: #eee; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .video-container {
+            position: relative;
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .detection-list {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #5f6368;
+            margin-bottom: 15px;
+        }
+
+        #detectedObjects {
+            list-style: none;
+        }
+
+        #detectedObjects li {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .error-message {
+            color: #d93025;
+            padding: 10px;
+            background-color: #fce8e6;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #5f6368;
+        }
+
+        .security-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #ffeeba;
+        }
+
+        /* New styles for camera switch button */
+        #switchCamera {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            transition: background-color 0.3s ease;
+        }
+
+        #switchCamera:hover {
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .detection-list {
+                padding: 15px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div>
-        <button id="loadModel">Load Model</button>
-        <button id="startCamera" disabled>Start Camera</button>
-        <button id="startDetection" disabled>Start Detection</button>
+    <h1>Real-time Object Detection</h1>
+    <div class="container">
+        <div class="video-container">
+            <video id="video" playsinline></video>
+            <canvas id="canvas"></canvas>
+            <!-- New camera switch button -->
+            <button id="switchCamera">Switch Camera</button>
+            <div id="error" class="error-message"></div>
+            <div id="loading" class="loading">Loading model...</div>
+        </div>
+        <div class="detection-list">
+            <h2>Detected Objects</h2>
+            <ul id="detectedObjects"></ul>
+        </div>
     </div>
-    <div id="status">Ready to start</div>
-    <div class="video-container">
-        <video id="video" autoplay playsinline></video>
-        <canvas id="canvas"></canvas>
-    </div>
-    <ul id="detections"></ul>
 
     <script>
         const video = document.getElementById('video');
-        const status = document.getElementById('status');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        let model = null;
+        const detectedObjectsList = document.getElementById('detectedObjects');
+        const errorDiv = document.getElementById('error');
+        const loadingDiv = document.getElementById('loading');
+        const switchCameraButton = document.getElementById('switchCamera');
 
-        function log(msg) {
-            status.textContent = msg;
-            console.log(msg);
+        const detectedObjects = new Map(); // Store unique detections
+        let model = null;
+        let isDetecting = false;
+        let currentFacingMode = 'environment'; // Start with rear camera
+
+        function isSecureContext() {
+            return window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         }
 
-        document.getElementById('loadModel').onclick = async () => {
+        // New function to check for multiple cameras
+        async function checkIfMobileWithMultipleCameras() {
             try {
-                log('Loading model...');
-                model = await cocoSsd.load();
-                log('Model loaded');
-                document.getElementById('startCamera').disabled = false;
-            } catch (e) {
-                log('Model error: ' + e);
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                if (videoDevices.length > 1) {
+                    switchCameraButton.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error checking cameras:', error);
             }
-        };
+        }
 
-        document.getElementById('startCamera').onclick = async () => {
+        // New function to switch cameras
+        async function switchCamera() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            
+            // Stop current video stream
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            // Start new video stream with different camera
             try {
-                log('Requesting camera...');
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
+                    video: { 
+                        facingMode: currentFacingMode,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
                     audio: false
                 });
-                log('Camera accessed');
                 video.srcObject = stream;
-                video.onloadeddata = () => {
-                    log('Camera ready');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    document.getElementById('startDetection').disabled = false;
-                };
-            } catch (e) {
-                log('Camera error: ' + e);
-            }
-        };
-
-        document.getElementById('startDetection').onclick = () => {
-            detect();
-        };
-
-        async function detect() {
-            try {
-                const predictions = await model.detect(video);
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                await video.play();
                 
-                predictions.forEach(p => {
-                    ctx.strokeStyle = '#0F0';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(...p.bbox);
-                    ctx.fillStyle = '#0F0';
-                    ctx.fillText(
-                        `${p.class} ${Math.round(p.score * 100)}%`,
-                        p.bbox[0],
-                        p.bbox[1] - 5
-                    );
-                });
-                
-                requestAnimationFrame(detect);
-            } catch (e) {
-                log('Detection error: ' + e);
+                // Update canvas dimensions for new video stream
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            } catch (error) {
+                console.error('Error switching camera:', error);
+                errorDiv.innerHTML = `<div class="security-warning">Error switching camera: ${error.message}</div>`;
+                errorDiv.style.display = 'block';
             }
         }
+
+        // Initialize the application
+        async function init() {
+            try {
+                if (!isSecureContext()) {
+                    throw new Error(
+                        'This page must be accessed over HTTPS or localhost to use the camera. ' +
+                        'Current protocol: ' + location.protocol
+                    );
+                }
+
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error(
+                        'Your browser doesn\'t support the camera API. ' +
+                        'Please try using a modern browser like Chrome, Firefox, or Safari.'
+                    );
+                }
+
+                // Check for multiple cameras
+                await checkIfMobileWithMultipleCameras();
+
+                // Load COCO-SSD model
+                model = await cocoSsd.load();
+                
+                // Setup webcam
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: currentFacingMode,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                video.srcObject = stream;
+                
+                await new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+
+                await video.play();
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                loadingDiv.style.display = 'none';
+                detectObjects();
+
+            } catch (error) {
+                console.error('Error:', error);
+                errorDiv.innerHTML = `
+                    <div class="security-warning">
+                        ${error.message}
+                        ${!isSecureContext() ? '<br><br>To fix this, either:<br>' +
+                            '1. Upload this page to a web server that supports HTTPS<br>' +
+                            '2. Use a local development server with HTTPS<br>' +
+                            '3. Access this page through localhost' : ''}
+                    </div>`;
+                errorDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        async function detectObjects() {
+            if (isDetecting) return;
+            isDetecting = true;
+
+            try {
+                const predictions = await model.detect(video);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                predictions.forEach(prediction => {
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        prediction.bbox[0],
+                        prediction.bbox[1],
+                        prediction.bbox[2],
+                        prediction.bbox[3]
+                    );
+
+                    ctx.fillStyle = '#00ff00';
+                    ctx.font = '16px Arial';
+                    ctx.fillText(
+                        `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+                        prediction.bbox[0],
+                        prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : prediction.bbox[1] + 20
+                    );
+
+                    if (!detectedObjects.has(prediction.class)) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        detectedObjects.set(prediction.class, timestamp);
+                        updateDetectionsList();
+                    }
+                });
+            } catch (error) {
+                console.error('Detection error:', error);
+            }
+
+            isDetecting = false;
+            setTimeout(detectObjects, 500);
+        }
+
+        function updateDetectionsList() {
+            detectedObjectsList.innerHTML = '';
+            detectedObjects.forEach((timestamp, object) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${object}</span>
+                    <span>${timestamp}</span>
+                `;
+                detectedObjectsList.appendChild(li);
+            });
+        }
+
+        // Add event listener for the switch button
+        switchCameraButton.addEventListener('click', switchCamera);
+
+        // Start the application
+        init();
     </script>
 </body>
 </html>
