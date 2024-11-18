@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Real-time Object Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -11,11 +11,12 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            padding: 10px;
             background-color: #f0f2f5;
         }
 
@@ -23,7 +24,7 @@
             max-width: 1200px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 1fr;
             gap: 20px;
         }
 
@@ -32,12 +33,17 @@
             background-color: #000;
             border-radius: 10px;
             overflow: hidden;
+            width: 100%;
+            aspect-ratio: 4/3;
         }
 
         #video {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
-            height: auto;
-            display: block;
+            height: 100%;
+            object-fit: contain;
         }
 
         #canvas {
@@ -46,24 +52,45 @@
             left: 0;
             width: 100%;
             height: 100%;
+            object-fit: contain;
+        }
+
+        #switchCamera {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1000;
+            display: none;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            background: #e3f2fd;
+            border-radius: 5px;
+            font-size: 14px;
+            display: none;
         }
 
         .detection-list {
-            background-color: white;
+            background: white;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        h1 {
-            color: #1a73e8;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        h2 {
-            color: #5f6368;
+        .detection-list h2 {
             margin-bottom: 15px;
+            color: #5f6368;
+            font-size: 18px;
         }
 
         #detectedObjects {
@@ -73,274 +100,186 @@
         #detectedObjects li {
             padding: 10px;
             margin: 5px 0;
-            background-color: #f8f9fa;
+            background: #f8f9fa;
             border-radius: 5px;
             display: flex;
             justify-content: space-between;
+            font-size: 14px;
         }
 
-        .error-message {
-            color: #d93025;
-            padding: 10px;
-            background-color: #fce8e6;
-            border-radius: 5px;
-            margin: 10px 0;
-            display: none;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #5f6368;
-        }
-
-        .security-warning {
-            background-color: #fff3cd;
-            color: #856404;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 10px 0;
-            border: 1px solid #ffeeba;
-        }
-
-        /* New styles for camera switch button */
-        #switchCamera {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            z-index: 1000;
-            display: none; /* Hidden by default */
-            transition: background-color 0.3s ease;
-        }
-
-        #switchCamera:hover {
-            background-color: rgba(0, 0, 0, 0.7);
-        }
-
-        @media (max-width: 768px) {
+        @media (min-width: 768px) {
             .container {
-                grid-template-columns: 1fr;
+                grid-template-columns: 2fr 1fr;
             }
-            
-            body {
-                padding: 10px;
-            }
+        }
 
-            h1 {
-                font-size: 24px;
-            }
-
-            .detection-list {
-                padding: 15px;
+        @supports (-webkit-touch-callout: none) {
+            .video-container {
+                transform: translateZ(0);
             }
         }
     </style>
 </head>
 <body>
-    <h1>Real-time Object Detection</h1>
+    <div id="status" class="status">Initializing...</div>
+
     <div class="container">
         <div class="video-container">
-            <video id="video" playsinline></video>
+            <video id="video" autoplay playsinline muted></video>
             <canvas id="canvas"></canvas>
-            <!-- New camera switch button -->
             <button id="switchCamera">Switch Camera</button>
-            <div id="error" class="error-message"></div>
-            <div id="loading" class="loading">Loading model...</div>
         </div>
         <div class="detection-list">
             <h2>Detected Objects</h2>
             <ul id="detectedObjects"></ul>
         </div>
     </div>
-
+    
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const detectedObjectsList = document.getElementById('detectedObjects');
-        const errorDiv = document.getElementById('error');
-        const loadingDiv = document.getElementById('loading');
-        const switchCameraButton = document.getElementById('switchCamera');
+        const statusDiv = document.getElementById('status');
+        const switchCameraBtn = document.getElementById('switchCamera');
 
-        const detectedObjects = new Map(); // Store unique detections
         let model = null;
+        let stream = null;
         let isDetecting = false;
-        let currentFacingMode = 'environment'; // Start with rear camera
+        let currentFacingMode = 'environment';
 
-        function isSecureContext() {
-            return window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        function updateStatus(message) {
+            statusDiv.textContent = message;
+            console.log(message);
         }
 
-        // New function to check for multiple cameras
-        async function checkIfMobileWithMultipleCameras() {
+        async function initCamera() {
             try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(device => device.kind === 'videoinput');
-                if (videoDevices.length > 1) {
-                    switchCameraButton.style.display = 'block';
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
                 }
-            } catch (error) {
-                console.error('Error checking cameras:', error);
-            }
-        }
 
-        // New function to switch cameras
-        async function switchCamera() {
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            
-            // Stop current video stream
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-            }
-
-            // Start new video stream with different camera
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: currentFacingMode,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode },
                     audio: false
                 });
-                video.srcObject = stream;
-                await video.play();
                 
-                // Update canvas dimensions for new video stream
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-            } catch (error) {
-                console.error('Error switching camera:', error);
-                errorDiv.innerHTML = `<div class="security-warning">Error switching camera: ${error.message}</div>`;
-                errorDiv.style.display = 'block';
-            }
-        }
-
-        // Initialize the application
-        async function init() {
-            try {
-                if (!isSecureContext()) {
-                    throw new Error(
-                        'This page must be accessed over HTTPS or localhost to use the camera. ' +
-                        'Current protocol: ' + location.protocol
-                    );
-                }
-
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error(
-                        'Your browser doesn\'t support the camera API. ' +
-                        'Please try using a modern browser like Chrome, Firefox, or Safari.'
-                    );
-                }
-
-                // Check for multiple cameras
-                await checkIfMobileWithMultipleCameras();
-
-                // Load COCO-SSD model
-                model = await cocoSsd.load();
-                
-                // Setup webcam
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: currentFacingMode,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
-                });
                 video.srcObject = stream;
                 
-                await new Promise(resolve => {
+                await new Promise((resolve) => {
                     video.onloadedmetadata = () => {
+                        video.play();
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
                         resolve();
                     };
                 });
 
-                await video.play();
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                loadingDiv.style.display = 'none';
-                detectObjects();
+                // Check for multiple cameras
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cameras = devices.filter(device => device.kind === 'videoinput');
+                if (cameras.length > 1) {
+                    switchCameraBtn.style.display = 'block';
+                }
 
+                detectObjects();
             } catch (error) {
-                console.error('Error:', error);
-                errorDiv.innerHTML = `
-                    <div class="security-warning">
-                        ${error.message}
-                        ${!isSecureContext() ? '<br><br>To fix this, either:<br>' +
-                            '1. Upload this page to a web server that supports HTTPS<br>' +
-                            '2. Use a local development server with HTTPS<br>' +
-                            '3. Access this page through localhost' : ''}
-                    </div>`;
-                errorDiv.style.display = 'block';
-                loadingDiv.style.display = 'none';
+                updateStatus('Camera error: ' + error.message);
+                statusDiv.style.display = 'block';
             }
         }
+
+        async function start() {
+            try {
+                updateStatus('Loading model...');
+                model = await cocoSsd.load();
+                
+                updateStatus('Starting camera...');
+                await initCamera();
+                
+                statusDiv.style.display = 'none';
+            } catch (error) {
+                updateStatus('Error: ' + error.message);
+                statusDiv.style.display = 'block';
+            }
+        }
+
+        switchCameraBtn.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await initCamera();
+        });
 
         async function detectObjects() {
             if (isDetecting) return;
             isDetecting = true;
-
+            
             try {
                 const predictions = await model.detect(video);
                 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+                
                 predictions.forEach(prediction => {
+                    // Draw box
                     ctx.strokeStyle = '#00ff00';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = 4;
                     ctx.strokeRect(
                         prediction.bbox[0],
                         prediction.bbox[1],
                         prediction.bbox[2],
                         prediction.bbox[3]
                     );
-
-                    ctx.fillStyle = '#00ff00';
+                    
+                    // Draw label background
+                    const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`;
                     ctx.font = '16px Arial';
-                    ctx.fillText(
-                        `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+                    const textMetrics = ctx.measureText(label);
+                    const textHeight = 20;
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                    ctx.fillRect(
                         prediction.bbox[0],
-                        prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : prediction.bbox[1] + 20
+                        prediction.bbox[1] > textHeight ? prediction.bbox[1] - textHeight : prediction.bbox[1],
+                        textMetrics.width + 4,
+                        textHeight
                     );
-
-                    if (!detectedObjects.has(prediction.class)) {
-                        const timestamp = new Date().toLocaleTimeString();
-                        detectedObjects.set(prediction.class, timestamp);
-                        updateDetectionsList();
+                    
+                    // Draw label text
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(
+                        label,
+                        prediction.bbox[0] + 2,
+                        prediction.bbox[1] > textHeight ? prediction.bbox[1] - 4 : prediction.bbox[1] + 16
+                    );
+                    
+                    // Add to list if new
+                    if (!detectedObjectsList.querySelector(`[data-object="${prediction.class}"]`)) {
+                        const li = document.createElement('li');
+                        li.setAttribute('data-object', prediction.class);
+                        li.innerHTML = `
+                            <span>${prediction.class}</span>
+                            <span>${new Date().toLocaleTimeString()}</span>
+                        `;
+                        detectedObjectsList.appendChild(li);
                     }
                 });
             } catch (error) {
                 console.error('Detection error:', error);
             }
-
+            
             isDetecting = false;
-            setTimeout(detectObjects, 500);
+            if (video.srcObject?.active) {
+                requestAnimationFrame(detectObjects);
+            }
         }
 
-        function updateDetectionsList() {
-            detectedObjectsList.innerHTML = '';
-            detectedObjects.forEach((timestamp, object) => {
-                const li = document.createElement('li');
-                li.innerHTML = `
-                    <span>${object}</span>
-                    <span>${timestamp}</span>
-                `;
-                detectedObjectsList.appendChild(li);
-            });
-        }
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
 
-        // Add event listener for the switch button
-        switchCameraButton.addEventListener('click', switchCamera);
-
-        // Start the application
-        init();
+        // Start everything automatically
+        start();
     </script>
 </body>
 </html>
