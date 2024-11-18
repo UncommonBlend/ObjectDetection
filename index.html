@@ -1,315 +1,102 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Object Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            padding: 10px;
-            background-color: #f0f2f5;
-        }
-
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .btn {
-            flex: 1;
-            min-width: 100px;
-            padding: 12px;
-            background: #1a73e8;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-
-        .btn:disabled {
-            background: #ccc;
-        }
-
-        .status {
-            margin: 10px 0;
-            padding: 10px;
-            background: #e3f2fd;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        .container {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .video-container {
-            position: relative;
-            background: #000;
-            border-radius: 10px;
-            overflow: hidden;
-            aspect-ratio: 4/3;
-        }
-
-        #video {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-
-        #canvas {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            left: 0;
-            top: 0;
-        }
-
-        #switchCamera {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.5);
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 5px;
-            display: none;
-            z-index: 100;
-        }
-
-        .detections {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .detections h2 {
-            margin-bottom: 10px;
-            font-size: 16px;
-            color: #333;
-        }
-
-        #detectedObjects {
-            list-style: none;
-        }
-
-        #detectedObjects li {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px;
-            margin: 5px 0;
-            background: #f8f9fa;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        @media (min-width: 768px) {
-            .container {
-                flex-direction: row;
-            }
-            .video-container {
-                flex: 2;
-            }
-            .detections {
-                flex: 1;
-            }
-        }
+        body { margin: 0; padding: 10px; }
+        #video { width: 100%; }
+        #canvas { position: absolute; left: 0; top: 0; }
+        .video-container { position: relative; }
+        button { padding: 10px; margin: 5px; }
+        #status { padding: 10px; margin: 10px 0; background: #eee; }
     </style>
 </head>
 <body>
-    <div class="controls">
-        <button id="loadModel" class="btn">Load Model</button>
-        <button id="startCamera" class="btn" disabled>Start Camera</button>
-        <button id="startDetection" class="btn" disabled>Start Detection</button>
+    <div>
+        <button id="loadModel">Load Model</button>
+        <button id="startCamera" disabled>Start Camera</button>
+        <button id="startDetection" disabled>Start Detection</button>
     </div>
-
-    <div id="status" class="status">Click 'Load Model' to begin</div>
-
-    <div class="container">
-        <div class="video-container">
-            <video id="video" autoplay playsinline muted></video>
-            <canvas id="canvas"></canvas>
-            <button id="switchCamera">Switch Camera</button>
-        </div>
-        <div class="detections">
-            <h2>Detected Objects</h2>
-            <ul id="detectedObjects"></ul>
-        </div>
+    <div id="status">Ready to start</div>
+    <div class="video-container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
     </div>
-    
+    <ul id="detections"></ul>
+
     <script>
         const video = document.getElementById('video');
+        const status = document.getElementById('status');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const statusDiv = document.getElementById('status');
-        const detectedObjectsList = document.getElementById('detectedObjects');
-        const loadModelBtn = document.getElementById('loadModel');
-        const startCameraBtn = document.getElementById('startCamera');
-        const startDetectionBtn = document.getElementById('startDetection');
-        const switchCameraBtn = document.getElementById('switchCamera');
-
         let model = null;
-        let stream = null;
-        let isDetecting = false;
-        let currentFacingMode = 'environment';
 
-        function updateStatus(message) {
-            statusDiv.textContent = message;
-            console.log(message);
+        function log(msg) {
+            status.textContent = msg;
+            console.log(msg);
         }
 
-        loadModelBtn.addEventListener('click', async () => {
+        document.getElementById('loadModel').onclick = async () => {
             try {
-                loadModelBtn.disabled = true;
-                updateStatus('Loading model...');
+                log('Loading model...');
                 model = await cocoSsd.load();
-                updateStatus('Model loaded');
-                startCameraBtn.disabled = false;
-            } catch (error) {
-                updateStatus('Error loading model');
-                loadModelBtn.disabled = false;
+                log('Model loaded');
+                document.getElementById('startCamera').disabled = false;
+            } catch (e) {
+                log('Model error: ' + e);
             }
-        });
+        };
 
-        startCameraBtn.addEventListener('click', async () => {
-            startCameraBtn.disabled = true;
-            updateStatus('Starting camera...');
-            
+        document.getElementById('startCamera').onclick = async () => {
             try {
-                // Basic camera request
-                stream = await navigator.mediaDevices.getUserMedia({
+                log('Requesting camera...');
+                const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: false
                 });
-                
+                log('Camera accessed');
                 video.srcObject = stream;
-                video.style.display = 'block';
-                
-                video.onloadedmetadata = async () => {
-                    try {
-                        await video.play();
-                        canvas.width = video.videoWidth;
-                        canvas.height = video.videoHeight;
-                        updateStatus('Camera ready');
-                        startDetectionBtn.disabled = false;
-                        
-                        // Check for multiple cameras
-                        const devices = await navigator.mediaDevices.enumerateDevices();
-                        const cameras = devices.filter(device => device.kind === 'videoinput');
-                        if (cameras.length > 1) {
-                            switchCameraBtn.style.display = 'block';
-                        }
-                    } catch (error) {
-                        updateStatus('Error starting video: ' + error.message);
-                        startCameraBtn.disabled = false;
-                    }
+                video.onloadeddata = () => {
+                    log('Camera ready');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    document.getElementById('startDetection').disabled = false;
                 };
-            } catch (error) {
-                updateStatus('Camera error: ' + error.message);
-                startCameraBtn.disabled = false;
+            } catch (e) {
+                log('Camera error: ' + e);
             }
-        });
+        };
 
-        startDetectionBtn.addEventListener('click', () => {
-            startDetectionBtn.disabled = true;
-            updateStatus('Starting detection');
-            detectObjects();
-        });
+        document.getElementById('startDetection').onclick = () => {
+            detect();
+        };
 
-        switchCameraBtn.addEventListener('click', async () => {
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode },
-                    audio: false
-                });
-                
-                video.srcObject = stream;
-                await video.play();
-                updateStatus('Camera switched');
-            } catch (error) {
-                updateStatus('Error switching camera');
-            }
-        });
-
-        async function detectObjects() {
-            if (isDetecting) return;
-            isDetecting = true;
-            
+        async function detect() {
             try {
                 const predictions = await model.detect(video);
-                
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 
-                predictions.forEach(prediction => {
-                    // Draw box
-                    ctx.strokeStyle = '#00ff00';
-                    ctx.lineWidth = 4;
-                    ctx.strokeRect(
-                        prediction.bbox[0],
-                        prediction.bbox[1],
-                        prediction.bbox[2],
-                        prediction.bbox[3]
-                    );
-                    
-                    // Draw label
-                    const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`;
-                    ctx.fillStyle = '#00ff00';
-                    ctx.font = '16px Arial';
+                predictions.forEach(p => {
+                    ctx.strokeStyle = '#0F0';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(...p.bbox);
+                    ctx.fillStyle = '#0F0';
                     ctx.fillText(
-                        label,
-                        prediction.bbox[0],
-                        prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : prediction.bbox[1] + 20
+                        `${p.class} ${Math.round(p.score * 100)}%`,
+                        p.bbox[0],
+                        p.bbox[1] - 5
                     );
-                    
-                    // Add to list if new
-                    if (!detectedObjectsList.querySelector(`[data-object="${prediction.class}"]`)) {
-                        const li = document.createElement('li');
-                        li.setAttribute('data-object', prediction.class);
-                        li.innerHTML = `
-                            <span>${prediction.class}</span>
-                            <span>${new Date().toLocaleTimeString()}</span>
-                        `;
-                        detectedObjectsList.appendChild(li);
-                    }
                 });
-            } catch (error) {
-                console.error('Detection error:', error);
-            }
-            
-            isDetecting = false;
-            if (video.srcObject?.active) {
-                requestAnimationFrame(detectObjects);
+                
+                requestAnimationFrame(detect);
+            } catch (e) {
+                log('Detection error: ' + e);
             }
         }
-
-        // Clean up on page unload
-        window.addEventListener('beforeunload', () => {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-        });
     </script>
 </body>
 </html>
