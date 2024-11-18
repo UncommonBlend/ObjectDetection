@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-time Object Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -11,27 +11,19 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            padding: 10px;
+            font-family: Arial, sans-serif;
+            padding: 20px;
             background-color: #f0f2f5;
-        }
-
-        h1 {
-            color: #1a73e8;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 24px;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: 1fr;
+            grid-template-columns: 2fr 1fr;
             gap: 20px;
         }
 
@@ -40,18 +32,11 @@
             background-color: #000;
             border-radius: 10px;
             overflow: hidden;
-            width: 100%;
-            aspect-ratio: 4/3;
         }
 
         #video {
-            position: absolute;
-            top: 0;
-            left: 0;
             width: 100%;
-            height: 100%;
-            object-fit: contain;
-            transform: scaleX(-1);
+            height: auto;
             display: block;
         }
 
@@ -61,45 +46,24 @@
             left: 0;
             width: 100%;
             height: 100%;
-            object-fit: contain;
-            transform: scaleX(-1);
-        }
-
-        #switchCamera {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            background: rgba(0, 0, 0, 0.6);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            z-index: 1000;
-            font-size: 14px;
-            display: block;
-        }
-
-        .status {
-            padding: 10px;
-            margin: 10px 0;
-            background: #e3f2fd;
-            border-radius: 5px;
-            font-size: 14px;
-            display: none;
         }
 
         .detection-list {
-            background: white;
+            background-color: white;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        .detection-list h2 {
-            margin-bottom: 15px;
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        h2 {
             color: #5f6368;
-            font-size: 18px;
+            margin-bottom: 15px;
         }
 
         #detectedObjects {
@@ -109,194 +73,164 @@
         #detectedObjects li {
             padding: 10px;
             margin: 5px 0;
-            background: #f8f9fa;
+            background-color: #f8f9fa;
             border-radius: 5px;
             display: flex;
             justify-content: space-between;
-            font-size: 14px;
         }
 
-        @media (min-width: 768px) {
+        .error-message {
+            color: #d93025;
+            padding: 10px;
+            background-color: #fce8e6;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #5f6368;
+        }
+
+        @media (max-width: 768px) {
             .container {
-                grid-template-columns: 2fr 1fr;
-            }
-        }
-
-        @supports (-webkit-touch-callout: none) {
-            .video-container {
-                transform: translateZ(0);
+                grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
 <body>
     <h1>Real-time Object Detection</h1>
-    <div id="status" class="status">Initializing...</div>
-
     <div class="container">
         <div class="video-container">
-            <video id="video" autoplay playsinline muted></video>
+            <video id="video" playsinline></video>
             <canvas id="canvas"></canvas>
-            <button id="switchCamera">Switch Camera</button>
+            <div id="error" class="error-message"></div>
+            <div id="loading" class="loading">Loading model...</div>
         </div>
         <div class="detection-list">
             <h2>Detected Objects</h2>
             <ul id="detectedObjects"></ul>
         </div>
     </div>
-    
+
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const detectedObjectsList = document.getElementById('detectedObjects');
-        const statusDiv = document.getElementById('status');
-        const switchCameraBtn = document.getElementById('switchCamera');
+        const errorDiv = document.getElementById('error');
+        const loadingDiv = document.getElementById('loading');
 
+        const detectedObjects = new Map(); // Store unique detections
         let model = null;
-        let stream = null;
         let isDetecting = false;
-        let currentFacingMode = 'user'; // Default to front camera
 
-        function updateStatus(message) {
-            statusDiv.textContent = message;
-            statusDiv.style.display = 'block';
-            console.log(message);
-        }
-
-        async function initCamera() {
+        // Initialize the application
+        async function init() {
             try {
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                }
-
-                const constraints = {
-                    video: { 
-                        facingMode: currentFacingMode,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
-                };
-
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-                
-                // Update video/canvas style based on camera type
-                const transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-                video.style.transform = transform;
-                canvas.style.transform = transform;
-
-                return new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        video.play().then(() => {
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            resolve();
-                        });
-                    };
-                });
-            } catch (error) {
-                updateStatus('Camera error: ' + error.message);
-                throw error;
-            }
-        }
-
-        async function start() {
-            try {
-                updateStatus('Loading model...');
+                // Load COCO-SSD model
                 model = await cocoSsd.load();
                 
-                updateStatus('Starting camera...');
-                await initCamera();
+                // Setup webcam
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' },
+                    audio: false
+                });
+                video.srcObject = stream;
                 
-                statusDiv.style.display = 'none';
+                // Wait for video to be ready
+                await new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+
+                // Start video
+                video.play();
+
+                // Set canvas dimensions
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                // Hide loading message
+                loadingDiv.style.display = 'none';
+
+                // Start detection loop
                 detectObjects();
             } catch (error) {
-                updateStatus('Error: ' + error.message);
+                console.error('Error:', error);
+                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
             }
         }
 
-        switchCameraBtn.addEventListener('click', async () => {
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            try {
-                await initCamera();
-            } catch (error) {
-                updateStatus('Failed to switch camera: ' + error.message);
-            }
-        });
-
+        // Perform object detection
         async function detectObjects() {
             if (isDetecting) return;
             isDetecting = true;
-            
+
             try {
                 const predictions = await model.detect(video);
                 
+                // Clear canvas
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
+
+                // Draw detections
                 predictions.forEach(prediction => {
-                    // Draw box
+                    // Draw bounding box
                     ctx.strokeStyle = '#00ff00';
-                    ctx.lineWidth = 4;
+                    ctx.lineWidth = 2;
                     ctx.strokeRect(
                         prediction.bbox[0],
                         prediction.bbox[1],
                         prediction.bbox[2],
                         prediction.bbox[3]
                     );
-                    
-                    // Draw label background
-                    const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`;
+
+                    // Draw label
+                    ctx.fillStyle = '#00ff00';
                     ctx.font = '16px Arial';
-                    const textMetrics = ctx.measureText(label);
-                    const textHeight = 20;
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                    ctx.fillRect(
-                        prediction.bbox[0],
-                        prediction.bbox[1] > textHeight ? prediction.bbox[1] - textHeight : prediction.bbox[1],
-                        textMetrics.width + 4,
-                        textHeight
-                    );
-                    
-                    // Draw label text
-                    ctx.fillStyle = '#ffffff';
                     ctx.fillText(
-                        label,
-                        prediction.bbox[0] + 2,
-                        prediction.bbox[1] > textHeight ? prediction.bbox[1] - 4 : prediction.bbox[1] + 16
+                        `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+                        prediction.bbox[0],
+                        prediction.bbox[1] > 20 ? prediction.bbox[1] - 5 : prediction.bbox[1] + 20
                     );
-                    
-                    // Add to list if new
-                    if (!detectedObjectsList.querySelector(`[data-object="${prediction.class}"]`)) {
-                        const li = document.createElement('li');
-                        li.setAttribute('data-object', prediction.class);
-                        li.innerHTML = `
-                            <span>${prediction.class}</span>
-                            <span>${new Date().toLocaleTimeString()}</span>
-                        `;
-                        detectedObjectsList.appendChild(li);
+
+                    // Add to unique detections if new
+                    if (!detectedObjects.has(prediction.class)) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        detectedObjects.set(prediction.class, timestamp);
+                        updateDetectionsList();
                     }
                 });
             } catch (error) {
                 console.error('Detection error:', error);
             }
-            
+
             isDetecting = false;
-            if (video.srcObject?.active) {
-                requestAnimationFrame(detectObjects);
-            }
+            // Schedule next detection (2 FPS)
+            setTimeout(detectObjects, 500);
         }
 
-        // Clean up on page unload
-        window.addEventListener('beforeunload', () => {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-        });
+        // Update the list of detected objects
+        function updateDetectionsList() {
+            detectedObjectsList.innerHTML = '';
+            detectedObjects.forEach((timestamp, object) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${object}</span>
+                    <span>${timestamp}</span>
+                `;
+                detectedObjectsList.appendChild(li);
+            });
+        }
 
-        // Start everything automatically
-        start();
+        // Start the application
+        init();
     </script>
 </body>
 </html>
