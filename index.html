@@ -94,9 +94,30 @@
             color: #5f6368;
         }
 
+        .security-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #ffeeba;
+        }
+
         @media (max-width: 768px) {
             .container {
                 grid-template-columns: 1fr;
+            }
+            
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .detection-list {
+                padding: 15px;
             }
         }
     </style>
@@ -128,15 +149,39 @@
         let model = null;
         let isDetecting = false;
 
+        function isSecureContext() {
+            return window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        }
+
         // Initialize the application
         async function init() {
             try {
+                // Check if we're in a secure context
+                if (!isSecureContext()) {
+                    throw new Error(
+                        'This page must be accessed over HTTPS or localhost to use the camera. ' +
+                        'Current protocol: ' + location.protocol
+                    );
+                }
+
+                // Check if mediaDevices API is available
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error(
+                        'Your browser doesn\'t support the camera API. ' +
+                        'Please try using a modern browser like Chrome, Firefox, or Safari.'
+                    );
+                }
+
                 // Load COCO-SSD model
                 model = await cocoSsd.load();
                 
                 // Setup webcam
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' },
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
                     audio: false
                 });
                 video.srcObject = stream;
@@ -149,7 +194,7 @@
                 });
 
                 // Start video
-                video.play();
+                await video.play();
 
                 // Set canvas dimensions
                 canvas.width = video.videoWidth;
@@ -162,7 +207,14 @@
                 detectObjects();
             } catch (error) {
                 console.error('Error:', error);
-                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.innerHTML = `
+                    <div class="security-warning">
+                        ${error.message}
+                        ${!isSecureContext() ? '<br><br>To fix this, either:<br>' +
+                            '1. Upload this page to a web server that supports HTTPS<br>' +
+                            '2. Use a local development server with HTTPS<br>' +
+                            '3. Access this page through localhost' : ''}
+                    </div>`;
                 errorDiv.style.display = 'block';
                 loadingDiv.style.display = 'none';
             }
